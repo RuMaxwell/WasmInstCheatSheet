@@ -46,32 +46,62 @@ const funcreftypecode = 0x70
 const externreftypecode = 0x6f
 const PAGE_SIZE = 65536
 
+/// Simulated Behaviors of the Runtime ///
+
+/** Stands for some operation that does not representable by TypeScript or not
+ * learned from the specification. */
 function _(): never { throw '' }
+/** Stands for a preprocessor operation that does not do anything in the
+ * runtime. */
 function virtual(): void { }
+/** Triggers an error. */
 function trap(): never { throw 'trap' }
+/** States that the operation requires a condition being true to run. */
 function assert(statement: boolean): void { }
+/** Pushes a value to the evaluation stack. */
 function push(value: val): void { }
-function pop(): val { _() }
+/** Pops a value from the evaluation stack. */
+function pop(): val | undefined { _() }
+/** Gets the type code of a value. */
 function typeOf(value: val): valtype { _() }
-function isNumType(valtype: valtype) { return (valtype & 0x7c) === 0x7c }
+/** Gets the runtime frame context. */
 function F(): Frame { _() }
+/** Gets the runtime store context. */
 function S(): Store { _() }
+/** Tests whether a cell, a global, a table, or a memory object exists. */
 function exists(cell: Cell | Glob | Tab | Mem): boolean { return !!cell }
+/** Grows a table by `n` bytes with initial value `initVal`. */
 function growTab(tab: Tab, n: i32, initVal: ref): boolean { _() }
+/** Grows a memory by `n` bytes. */
 function growMem(mem: Mem, n: i32): boolean { _() }
+/** Reinterprets 2 consecutive bytes into an i16. An i16 is represented by an i32
+ * or i64 when being used. */
 function bytesToI16(bytes: i8[]): i32 | i64 { _() }
+/** Reinterprets 4 consecutive bytes into an i32. An i32 is represented by an i32
+ * or i64 when being used. */
 function bytesToI32(bytes: i8[]): i32 | i64 { _() }
+/** Reinterprets 8 consecutive bytes into an i64. */
 function bytesToI64(bytes: i8[]): i64 { _() }
+/** Reinterprets 4 consecutive bytes into an f32. */
 function bytesToF32(bytes: i8[]): f32 { _() }
+/** Reinterprets 8 consecutive bytes into an f64. */
 function bytesToF64(bytes: i8[]): f64 { _() }
+/** Reinterprets 16 consecutive bytes into a v128. */
 function bytesToV128(bytes: i8[]): v128 { _() }
+/** Reinterprets an i16 represented in i32 or i64 into 2 consecutive bytes. */
 function i16ToBytes(value: i32 | i64): i8[] { _() }
+/** Reinterprets an i32 represented in i32 or i64 into 4 consecutive bytes. */
 function i32ToBytes(value: i32 | i64): i8[] { _() }
+/** Reinterprets an i64 into 8 consecutive bytes. */
 function i64ToBytes(value: i64): i8[] { _() }
+/** Reinterprets an f32 into 4 consecutive bytes. */
 function f32ToBytes(value: f32): i8[] { _() }
+/** Reinterprets an f64 into 8 consecutive bytes. */
 function f64ToBytes(value: f64): i8[] { _() }
+/** Reinterprets a v128 into 16 consecutive bytes. */
 function v128ToBytes(value: v128): i8[] { _() }
 
+/** Asserts that a table at `tableidx` exists and returns it. */
 function assertGetTab(tableidx: u32): Tab {
     let tableaddr = F().module.tableaddrs[tableidx]
     assert(exists(tableaddr))
@@ -80,6 +110,7 @@ function assertGetTab(tableidx: u32): Tab {
     return tab
 }
 
+/** Asserts that an element at `elemidx` exists in the memory and returns it. */
 function assertGetElem(elemidx: u32): Elem {
     let elemaddr = F().module.elemaddrs[elemidx]
     assert(exists(elemaddr))
@@ -88,6 +119,7 @@ function assertGetElem(elemidx: u32): Elem {
     return elem
 }
 
+/** Asserts that a memory at `memidx` exists and returns it. */
 function assertGetMem(memidx: u32): Mem {
     let memaddr = F().module.memoryaddrs[memidx]
     assert(exists(memaddr))
@@ -96,6 +128,7 @@ function assertGetMem(memidx: u32): Mem {
     return mem
 }
 
+/** Represents the runtime frame. */
 interface Frame {
     locals: Cell[]
     module: {
@@ -106,10 +139,12 @@ interface Frame {
     }
 }
 
+/** Represents a cell. */
 interface Cell {
     value: val
 }
 
+/** Represents the runtime store. */
 interface Store {
     globals: Glob[]
     tables: Tab[]
@@ -117,58 +152,61 @@ interface Store {
     mems: Mem[]
 }
 
+/** Represents a global variable. */
 interface Glob {
     mut: mut
     value: val
 }
 
+/** Represents the mutability of a global variable. */
+enum mut {
+    const = 0x00,
+    var = 0x01,
+}
+
+/** Represents a table. */
 interface Tab {
     elem: val[]
 }
 
+/** Represents an element. */
 interface Elem {
     elem: val[]
 }
 
+/** Represents a memory. */
 interface Mem {
     data: i8[]
     /** Size of `mem` is length of `mem.data` divided by page_size */
     get size(): i32
 }
 
-enum mut {
-    const = 0x00,
-    var = 0x01,
-}
-
 /**
  * Example:
- * 
+ *
  * `i32.const` represents the instruction `i32.const`.
- * 
+ *
  * Input parameters `s0`, `s1`, ... represent the stack values. The values are
- * popped in the ascending order of the parameters, which means the actual
- * order (defined by the WASM specification) of the instruction operands are in
- * the same direction.
- * e.g. `(i32.gt_s (i32.const 2) (i32.const 1))` returns 1 because the first
- * being pushed to the stack is the first operand.
- * 
+ * popped in the ascending order of the parameters, which means the actual order
+ * (defined by the WASM specification) of the instruction operands are in the
+ * same direction. Input parameters `...ss` represents any number of values
+ * popped from the stack. e.g. `(i32.gt_s (i32.const 2) (i32.const 1))` returns
+ * 1 because the first being pushed to the stack is the first operand.
+ *
  * Other parameters (like `x`, `y`, `funcidx`) represent the instants of the
  * instruction, in the same order of what they are defined by the WASM
  * specification.
- * 
+ *
  * The return type represents the result given back to the stack.
- * 
- * The doc comment of an instruction uses a signature syntax:
- * `instruction_name instant_names : input_params -> output_params`,
- * where `instruction_name` is the name of the instruction;
- *       `instant_names` are names of the instants (optional);
- *       `input_params` are names of the operands popped from the stack before
- *                      the instruction body (optional);
- *       `output_params` are names of the values pushed to the stack after the
- *                       instruction body (optional).
- * The `input_params` are always in the reversed order agianst the `sN`
- * parameters declared by the instruction function.
+ *
+ * The doc comment of an instruction uses a signature syntax: `instruction_name
+ * instant_names : input_params -> output_params`, where `instruction_name` is
+ * the name of the instruction; `instant_names` are names of the instants
+ * (optional); `input_params` are names of the operands popped from the stack
+ * before the instruction body (optional); `output_params` are names of the
+ * values pushed to the stack after the instruction body (optional). The
+ * `input_params` are always in the reversed order agianst the `sN` parameters
+ * declared by the instruction function.
  */
 const instructions = {
     /// Numeric Instructions ///
@@ -1033,23 +1071,12 @@ const instructions = {
         func(funcidx: u32): addr { _() },
     },
 
-    /// Parametric Instructions ///
-
-    /** drop : value -> nil */
-    drop(s0: val): void { _() },
-    /** select valtype : value_x value_y condition */
-    select(s0: i32, s1: val, s2: val, valtype: valtype): val {
-        assert(typeOf(s1) === valtype)
-        assert(typeOf(s2) === valtype)
-        return s0 ? s2 : s1;
-    },
-
     /// Variable Instructions ///
 
     local: {
         /** Syntax: `local $var type`. Declare a local variable. This is a
-         * virtual instruction to let you use an identifier instead of an index
-         * number to reference a local variable. */
+         * preprocessor instruction to let you use an identifier instead of an
+         * index number to reference a local variable. */
         _(): void { virtual() },
         /** [0x20] Syntax: `local.get $var`. Load the value of local variable
          * onto the stack. */
@@ -1074,8 +1101,8 @@ const instructions = {
     },
     global: {
         /** Syntax: `global $var type`. Declare a global variable. This is a
-         * virtual instruction to let you use an identifier instead of an index
-         * number to reference a global variable. */
+         * preprocessor instruction to let you use an identifier instead of an
+         * index number to reference a global variable. */
         _(): void { virtual() },
         /** [0x23] Syntax: `global.get $var`. Load the value of global variable
          * onto the stack. */
@@ -1157,7 +1184,7 @@ const instructions = {
                 push(s2)
                 push(s1)
             }
-            instructions.table.copy(s0 - 1, pop(), pop(), tableidx0, tableidx1)
+            instructions.table.copy(s0 - 1, pop()!, pop()!, tableidx0, tableidx1)
         },
         /** table.init x elemidx : table_offset elem_offset length -> nil */
         init(s0: i32, s1: i32, s2: i32, tableidx: u32, elemidx: u32): void {
@@ -1225,5 +1252,94 @@ const instructions = {
             push(s1)
             // TODO: Continue at memory.fill 16.
         },
+    },
+
+    /// Control Flow Instructions ///
+
+    /** [0x00] Denotes a point in code that should not be reachable. */
+    unreachable(): never { trap() },
+
+    /** [0x01] Do nothing. */
+    nop(): void { },
+
+    /** [0x02] Syntax: `(block $label ...)`. Create a label that can be branched
+     * to. Branching to the label takes the execution to the end of the block,
+     * that is, out of the block. In high-level programming languages, this is
+     * like a `do { } while (0)` block, and branching is like a break statement.
+     * The label is not an actual parameter of this intruction, but rather a
+     * preprocessor declaration. */
+    block(): void { _() },
+    /** [0x03] Syntax: `(loop $label ...)`. Create a label that can be branched
+     * to. Branching to the label takes the execution to the start of the loop.
+     * This instruction does not loop itself but requires branching to do so.
+     * The label is not an actual parameter of this intruction, but rather a
+     * preprocessor declaration. */
+    loop(): void { _() },
+
+    /** [0x04] Syntax: `(if (then ...) (else ...))`. Execute a statement if the
+     * value popped from the stack is true (non-zero), or optionally executes
+     * another statement if the value is false (0). */
+    if(s0: val): void { _() },
+
+    /** [0x0b] Indicates the end of a `block`, `loop`, `if`, or `else`. */
+    end(): void { _() },
+
+    /** [0x0f] Returns from the function. If there are no values left on the
+     * stack, it returns nothing/void. If there are the same amount of values
+     * left on the stack as specified in the function's type signature, it
+     * returns those values. If there are more values than that the function's
+     * return type specifies, then the first N values are returned, and the
+     * excess values are popped from the stack and discarded. */
+    return(...ss: val[]): void { _() },
+
+    /** [0x0c] Syntax: `br $label`. Unconditionally branch to a `loop`, `block`,
+     * or `if`. If its target is a `loop`, it jumps to the start of the loop. If
+     * its target is a `block` or `if`, it jumps to the end of the block. It is
+     * like a `continue` statement in some high-level programming languages.
+     *
+     * Note: A label index is how many layers of blocks and loops this
+     * instruction is away with the target. For the block or loop this
+     * instruction is directly in, the label index is `0`. */
+    br(labelidx: u32): void { _() },
+    /** [0x0d] Syntax: `br_if $label`. Branch to a `loop` or `block` if the
+     * value popped from the stack is true (non-zero). Despite of the condition,
+     * it is identical to the `br` instruction. */
+    br_if(s0: bool, labelidx: u32): void { _() },
+    /** [0x0e] Syntax: `br_table $label1 $label2 ...`. Branch to one of the
+     * `loop`s and `block`s given by the labels according to the index `s0`
+     * popped from the stack.
+     * 
+     * @example
+     * (block $a
+     *   (block $b
+     *     (block $c (i32.const 1)
+     *               ; This breaks the block $b and continues at (i32.const 42).
+     *               (br_table $a $b $c)
+     *     ))
+     *   (i32.const 42)*/
+    br_table(s0: u32, ...labelidxs: u32[]): void { _() },
+
+    /** [0x10] Call a function. */
+    call(funcidx: u32) { _() },
+    /** [0x11] Call the function of index `s0` in a table. The table index is
+     * optional if there is only one table. */
+    call_indirect(s0: i32, tableidx: u32, funcidx: u32) { _() },
+    /** [0x12] The tail-call version of `call`. */
+    return_call(funcidx: u32) { _() },
+    /** [0x13] The tail-call version of `call_indirect`. */
+    return_call_indirect(s0: i32, tableidx: u32, funcidx: u32) { _() },
+
+    /** [0x1a] Pop a value from the stack and discard it. */
+    drop(s0: val): void { },
+
+    /** [0x1b] Syntax: `select` or [0x1c] `select (result T)`. Return `s0` is `s2` is
+     * zero, or `s1` if not. This instruction does not short-circuit. The simple
+     * `select` syntax only allows the values of WebAssembly MVP types (`i32`,
+     * `i64`, `f32`, `f64`). While the alternative, `select (result T)`, allows
+     * other types, such as two `externref` values. */
+    select(s0: i32, s1: val, s2: val, valtype: valtype): val {
+        assert(typeOf(s0) === valtype)
+        assert(typeOf(s1) === valtype)
+        return s2 ? s0 : s1;
     },
 }
