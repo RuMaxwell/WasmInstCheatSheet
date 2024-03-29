@@ -59,12 +59,14 @@ function S(): Store { _() }
 function exists(cell: Cell | Glob | Tab | Mem): boolean { return !!cell }
 function growTab(tab: Tab, n: i32, initVal: ref): boolean { _() }
 function growMem(mem: Mem, n: i32): boolean { _() }
-function bytesToI32(bytes: i8[]): i32 { _() }
+function bytesToI16(bytes: i8[]): i32 | i64 { _() }
+function bytesToI32(bytes: i8[]): i32 | i64 { _() }
 function bytesToI64(bytes: i8[]): i64 { _() }
 function bytesToF32(bytes: i8[]): f32 { _() }
 function bytesToF64(bytes: i8[]): f64 { _() }
 function bytesToV128(bytes: i8[]): v128 { _() }
-function i32ToBytes(value: i32): i8[] { _() }
+function i16ToBytes(value: i32 | i64): i8[] { _() }
+function i32ToBytes(value: i32 | i64): i8[] { _() }
 function i64ToBytes(value: i64): i8[] { _() }
 function f32ToBytes(value: f32): i8[] { _() }
 function f64ToBytes(value: f64): i8[] { _() }
@@ -203,15 +205,15 @@ const instructions = {
         or(s0: i32, s1: i32): i32 { return s0 | s1 },
         /** [0x73] Get the bitwise XOR of two numbers. */
         xor(s0: i32, s1: i32): i32 { return s0 ^ s1 },
-        /** [0x74] Perform bitwise left-shift of `s1` spots on `s0`. */
+        /** [0x74] Perform bitwise left-shift of `s1` bits on `s0`. */
         shl(s0: i32, s1: i32): i32 { return s0 << s1 },
-        /** [0x75] Perform signed bitwise right-shift of `s1` spots on `s0`. */
+        /** [0x75] Perform signed bitwise right-shift of `s1` bits on `s0`. */
         shr_s(s0: s32, s1: i32): i32 { return s0 >>> s1 },
-        /** [0x76] Perform unsigned bitwise right-shift of `s1` spots on `s0`. */
+        /** [0x76] Perform unsigned bitwise right-shift of `s1` bits on `s0`. */
         shr_u(s0: u32, s1: i32): i32 { return s0 >>> s1 },
-        /** [0x77] Perform bitwise left-rotate of `s1` spots on `s0`. */
+        /** [0x77] Perform bitwise left-rotate of `s1` bits on `s0`. */
         rotl(s0: i32, s1: i32): i32 { _() },
-        /** [0x78] Perform bitwise right-rotate of `s1` spots on `s0`. */
+        /** [0x78] Perform bitwise right-rotate of `s1` bits on `s0`. */
         rotr(s0: i32, s1: i32): i32 { _() },
 
         /** [0x45] Test if `s0` equals to zero. */
@@ -263,7 +265,7 @@ const instructions = {
         /** [0xbc] Reinterpret bits of `s0` to i32. */
         reinterpret_f32(s0: f32): i32 { _() },
 
-        /** i32.load memarg : index -> value */
+        /** [0x28] Load a number from memory at the offset `s0`. */
         load(s0: i32, memarg: memarg): i32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -271,14 +273,65 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 4)
             return bytesToI32(bytes)
         },
-        /** i32.load memarg : index value -> nil */
-        store(s0: val, s1: i32, memarg: memarg): void {
+        /** [0x2c] Load a signed i8 from memory at the offset `s0` and extend it
+         * into an i32. */
+        load8_s(s0: i32, memarg: memarg): i32 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 1 > mem.data.length) { trap() }
+            let byte = mem.data[offset]
+            return byte
+        },
+        /** [0x2d] Load an unsigned i8 from memory at the offset `s0` and extend
+         * it into an i32. */
+        load8_u(s0: i32, memarg: memarg): i32 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 1 > mem.data.length) { trap() }
+            let byte = mem.data[offset]
+            return byte
+        },
+        /** [0x2e] Load a signed i16 from memory at the offset `s0` and extend
+         * it into an i32. */
+        load16_s(s0: i32, memarg: memarg): i32 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 2 > mem.data.length) { trap() }
+            let bytes = mem.data.slice(offset, offset + 2)
+            return bytesToI16(bytes)
+        },
+        /** [0x2f] Load an unsigned i16 from memory at the offset `s0` and
+         * extend it into an i32. */
+        load16_u(s0: i32, memarg: memarg): i32 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 2 > mem.data.length) { trap() }
+            let bytes = mem.data.slice(offset, offset + 2)
+            return bytesToI16(bytes)
+        },
+        /** [0x36] Store `s1` into memory at the offset `s0`. */
+        store(s0: i32, s1: i32, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 4 > mem.data.length) { trap() }
             mem.data.splice(offset, offset + 4, ...i32ToBytes(s1))
         },
-        // TODO: Continue at inn.load8_sx
+        /** [0x3a] Store an i8 `s1` represented in i32 into memory at the offset
+         * `s0`. */
+        store8(s0: i32, s1: i32, memarg: memarg): void {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 1 > mem.data.length) { trap() }
+            mem.data[s0] = s1
+        },
+        /** [0x3b] Store an i16 `s1` represented in i32 into memory at the
+         * offset `s0`. */
+        store16(s0: i32, s1: i32, memarg: memarg): void {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 2 > mem.data.length) { trap() }
+            mem.data.splice(offset, offset + 2, ...i16ToBytes(s1))
+        },
     },
     i64: {
         /** [0x42] Push an instant number. */
@@ -312,15 +365,15 @@ const instructions = {
         or(s0: i64, s1: i64): i64 { return s0 | s1 },
         /** [0x85] Get the bitwise XOR of two numbers. */
         xor(s0: i64, s1: i64): i64 { return s0 ^ s1 },
-        /** [0x86] Perform bitwise left-shift of `s1` spots on `s0`. */
+        /** [0x86] Perform bitwise left-shift of `s1` bits on `s0`. */
         shl(s0: i64, s1: i64): i64 { return s0 << s1 },
-        /** [0x87] Perform signed bitwise right-shift of `s1` spots on `s0`. */
+        /** [0x87] Perform signed bitwise right-shift of `s1` bits on `s0`. */
         shr_s(s0: s64, s1: i64): i64 { return s1 >>> s0 },
-        /** [0x88] Perform unsigned bitwise right-shift of `s1` spots on `s0`. */
+        /** [0x88] Perform unsigned bitwise right-shift of `s1` bits on `s0`. */
         shr_u(s0: u64, s1: i64): i64 { return s1 >>> s0 },
-        /** [0x89] Perform bitwise left-rotate of `s1` spots on `s0`. */
+        /** [0x89] Perform bitwise left-rotate of `s1` bits on `s0`. */
         rotl(s0: i64, s1: i64): i64 { _() },
-        /** [0x8a] Perform bitwise left-rotate of `s1` spots on `s0`. */
+        /** [0x8a] Perform bitwise left-rotate of `s1` bits on `s0`. */
         rotr(s0: i64, s1: i64): i64 { _() },
 
         /** [0x50] Test if `s0` equals to 0. */
@@ -377,7 +430,7 @@ const instructions = {
         /** [0xbd] Reinterpret bits of `s0` to i64. */
         reinterpret_f64(s0: f64): i64 { _() },
 
-        /** i64.load memarg : index -> value */
+        /** [0x29] Load a number from memory at the offset `s0`. */
         load(s0: i64, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -385,12 +438,90 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 8)
             return bytesToI64(bytes)
         },
-        /** i64.load memarg : index value -> nil */
+        /** [0x30] Load a signed i8 from memory at the offset `s0` and extend it
+         * into an i64. */
+        load8_s(s0: i32, memarg: memarg): i64 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 1 > mem.data.length) { trap() }
+            let byte = mem.data[offset]
+            return byte
+        },
+        /** [0x31] Load an unsigned i8 from memory at the offset `s0` and extend
+         * it into an i64. */
+        load8_u(s0: i32, memarg: memarg): i64 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 1 > mem.data.length) { trap() }
+            let byte = mem.data[offset]
+            return byte
+        },
+        /** [0x32] Load a signed i16 from memory at the offset `s0` and extend
+         * it into an i64. */
+        load16_s(s0: i32, memarg: memarg): i64 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 2 > mem.data.length) { trap() }
+            let bytes = mem.data.slice(offset, offset + 2)
+            return bytesToI16(bytes)
+        },
+        /** [0x33] Load an unsigned i16 from memory at the offset `s0` and
+         * extend it into an i64. */
+        load16_u(s0: i32, memarg: memarg): i64 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 2 > mem.data.length) { trap() }
+            let bytes = mem.data.slice(offset, offset + 2)
+            return bytesToI16(bytes)
+        },
+        /** [0x34] Load a signed i32 from memory at the offset `s0` and extend
+         * it into an i64. */
+        load32_s(s0: i32, memarg: memarg): i64 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 4 > mem.data.length) { trap() }
+            let bytes = mem.data.slice(offset, offset + 4)
+            return bytesToI32(bytes)
+        },
+        /** [0x35] Load an unsigned i32 from memory at the offset `s0` and
+         * extend it into an i64. */
+        load32_u(s0: i32, memarg: memarg): i64 {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 4 > mem.data.length) { trap() }
+            let bytes = mem.data.slice(offset, offset + 4)
+            return bytesToI32(bytes)
+        },
+        /** [0x37] Store `s1` into memory at the offset `s0`. */
         store(s0: val, s1: i64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 8 > mem.data.length) { trap() }
             mem.data.splice(offset, offset + 8, ...i64ToBytes(s1))
+        },
+        /** [0x3c] Store an i8 `s1` represented in i64 into memory at the offset
+         * `s0`. */
+        store8(s0: i32, s1: i64, memarg: memarg): void {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 1 > mem.data.length) { trap() }
+            mem.data[s0] = s1
+        },
+        /** [0x3d] Store an i16 `s1` represented in i64 into memory at the
+         * offset `s0`. */
+        store16(s0: i32, s1: i64, memarg: memarg): void {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 2 > mem.data.length) { trap() }
+            mem.data.splice(offset, offset + 2, ...i16ToBytes(s1))
+        },
+        /** [0x3e] Store an i32 `s1` represented in i64 into memory at the
+         * offset `s0`. */
+        store32(s0: i32, s1: i64, memarg: memarg): void {
+            let mem = assertGetMem(0)
+            let offset = s0 + memarg.offset
+            if (offset + 4 > mem.data.length) { trap() }
+            mem.data.splice(offset, offset + 4, ...i32ToBytes(s1))
         },
     },
     f32: {
@@ -454,7 +585,7 @@ const instructions = {
         /** [0xbe] Reinterpret bits of `s0` to f32. */
         reinterpret_i32(s0: i32): f32 { _() },
 
-        /** f32.load memarg : index -> value */
+        /** [0x2a] Load a number from memory at the offset `s0`. */
         load(s0: f32, memarg: memarg): f32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -462,8 +593,8 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 4)
             return bytesToF32(bytes)
         },
-        /** f32.load memarg : index value -> nil */
-        store(s0: val, s1: f32, memarg: memarg): void {
+        /** [0x38] Store `s1` into memory at the offset `s0`. */
+        store(s0: i32, s1: f32, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 4 > mem.data.length) { trap() }
@@ -531,7 +662,7 @@ const instructions = {
         /** [0xbf] Reinterpret bits of `s0` to f64. */
         reinterpret_i64(s0: i64): f64 { _() },
 
-        /** f64.load memarg : index -> value */
+        /** [0x2b] Load a number from memory at the offset `s0`. */
         load(s0: f64, memarg: memarg): f64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -539,8 +670,8 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 8)
             return bytesToF64(bytes)
         },
-        /** f64.load memarg : index value -> nil */
-        store(s0: val, s1: f64, memarg: memarg): void {
+        /** [0x39] Store `s1` into memory at the offset `s0`. */
+        store(s0: i32, s1: f64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 8 > mem.data.length) { trap() }
@@ -585,7 +716,8 @@ const instructions = {
         shuffle(x: vec<u8, 16>): i8x16 { _() },
         swizzle(s0: i8x16): i8x16 { _() },
 
-        /** Duplicate an i8 (stored as i32) value 16 times to produce an i8x16. */
+        /** Duplicate an i8 (stored as i32) value 16 times to produce an i8x16.
+         * */
         splat(s0: i32): i8x16 { _() },
 
         /** Select the `x`th lane of `s0` (`x` < 16) and return the unpacked
@@ -640,7 +772,8 @@ const instructions = {
         avgr_u(s0: i8x16, s1: i8x16): i8x16 { _() },
     },
     i16x8: {
-        /** Duplicate an i16 (stored as i32) value 8 times to produce an i16x8. */
+        /** Duplicate an i16 (stored as i32) value 8 times to produce an i16x8.
+         * */
         splat(s0: i32): i16x8 { _() },
 
         /** Select the `x`th lane of `s0` (`x` < 8) and return the unpacked
@@ -1049,28 +1182,46 @@ const instructions = {
     /// Memory Instructions ///
 
     memory: {
-        /** memory.size : -> size */
+        /** [0x3f] Returns the amount of pages the memory instance currently
+         * has, each page is sized 64KiB. */
         size(): i32 {
             let mem = assertGetMem(0)
             return mem.size
         },
-        /** memory.grow : new_page_count -> original_size */
+        /** [0x40] Increases the size of the memory instance by a `s0` number of
+         * pages, each page is sized 64KiB. Push the previous size, or -1 if
+         * failed. */
         grow(s0: i32): i32 {
             let mem = assertGetMem(0)
+            let size = mem.size
             let err = -1 as i32
             if (growMem(mem, s0)) {
-                return mem.size
+                return size
             } else {
                 return err
             }
-            return err
         },
-        /** memory.fill : start value length -> nil */
+        /** [0xfc][0x0a] Copies data from one region of memory to another.
+         * Source memory region starts from pointer `s1`. Destination memory
+         * region starts from pointer `s0`. `s2` is the number of bytes to copy.
+         * */
+        copy(s0: i32, s1: i32, s2: i32): void {
+            let mem = assertGetMem(0)
+            if (s0 + s2 > mem.data.length) { trap() }
+            if (s1 + s2 > mem.data.length) { trap() }
+            if (s2 === 0) { return }
+            push(s0)
+            push(s1)
+            // TODO: Continue at memory.copy.
+        },
+        /** [0xfc][0x0b] Sets all bytes in a memory region to byte `s1`. The
+         * memory region starts from pointer `s0` and has a length of `s2`
+         * bytes. */
         fill(s0: i32, s1: i32, s2: i32): void {
             let mem = assertGetMem(0)
-            if (s2 + s0 > mem.data.length) { trap() }
-            if (s0 === 0) { return }
-            push(s2)
+            if (s0 + s2 > mem.data.length) { trap() }
+            if (s2 === 0) { return }
+            push(s0)
             push(s1)
             // TODO: Continue at memory.fill 16.
         },
