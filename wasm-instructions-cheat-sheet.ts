@@ -49,7 +49,7 @@ const funcreftypecode = 0x70
 const externreftypecode = 0x6f
 const PAGE_SIZE = 65536
 
-/// Simulated Behaviors of the Runtime ///
+/// Simulated behaviors of the runtime ///
 
 /** Stands for some operation that does not representable by TypeScript or not
  * learned from the specification. */
@@ -239,7 +239,7 @@ interface Func {
  * `i32.const` represents the instruction `i32.const`.
  *
  * Input parameters `s0`, `s1`, ... represent the stack values. The values are
- * popped in the ascending order of the parameters, which means the actual order
+ * pushed in the same order as the parameters, which means the actual order
  * (defined by the WebAssembly specification) of the instruction operands are in
  * the same direction. e.g. `(i32.gt_s (i32.const 2) (i32.const 1))` returns 1
  * (which means `2 > 1 == true`). The first operand `2` is pushed to the stack
@@ -251,8 +251,7 @@ interface Func {
  * i32.gt_s
  * ```
  *
- * Input parameter `ss` represents any number of values popped from the
- * stack.
+ * Input parameter `ss` represents any number of values popped from the stack.
  *
  * Other parameters (like `x`, `y`, `funcidx`) represent the instants of the
  * instruction, in the same order of what they are defined by the WebAssembly
@@ -357,7 +356,8 @@ const instructions = {
         /** [0xbc] Reinterpret bits of `s0` to i32. */
         reinterpret_f32(s0: f32): i32 { _() },
 
-        /** [0x28] Load a number from memory at the offset `s0`. */
+        /** [0x28] Load a number from memory at the offset `s0`. `memarg` is
+         * used by the instruction but can not be given manually. */
         load(s0: i32, memarg: memarg): i32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -366,7 +366,8 @@ const instructions = {
             return bytesToI32(bytes)
         },
         /** [0x2c] Load a signed i8 from memory at the offset `s0` and extend it
-         * into an i32. */
+         * into an i32. `memarg` is used by the instruction but can not be given
+         * manually.*/
         load8_s(s0: i32, memarg: memarg): i32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -375,7 +376,8 @@ const instructions = {
             return byte
         },
         /** [0x2d] Load an unsigned i8 from memory at the offset `s0` and extend
-         * it into an i32. */
+         * it into an i32. `memarg` is used by the instruction but can not be
+         * given manually. */
         load8_u(s0: i32, memarg: memarg): i32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -384,7 +386,8 @@ const instructions = {
             return byte
         },
         /** [0x2e] Load a signed i16 from memory at the offset `s0` and extend
-         * it into an i32. */
+         * it into an i32. `memarg` is used by the instruction but can not be
+         * given manually. */
         load16_s(s0: i32, memarg: memarg): i32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -393,7 +396,8 @@ const instructions = {
             return bytesToI16(bytes)
         },
         /** [0x2f] Load an unsigned i16 from memory at the offset `s0` and
-         * extend it into an i32. */
+         * extend it into an i32. `memarg` is used by the instruction but can
+         * not be given manually. */
         load16_u(s0: i32, memarg: memarg): i32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -401,7 +405,8 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 2)
             return bytesToI16(bytes)
         },
-        /** [0x36] Store `s1` into memory at the offset `s0`. */
+        /** [0x36] Store `s1` into memory at the offset `s0`. `memarg` is used
+         * by the instruction but can not be given manually. */
         store(s0: i32, s1: i32, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -409,7 +414,8 @@ const instructions = {
             mem.data.splice(offset, offset + 4, ...i32ToBytes(s1))
         },
         /** [0x3a] Store an i8 `s1` represented in i32 into memory at the offset
-         * `s0`. */
+         * `s0`. `memarg` is used by the instruction but can not be given
+         * manually. */
         store8(s0: i32, s1: i32, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -417,7 +423,8 @@ const instructions = {
             mem.data[s0] = s1
         },
         /** [0x3b] Store an i16 `s1` represented in i32 into memory at the
-         * offset `s0`. */
+         * offset `s0`. `memarg` is used by the instruction but can not be given
+         * manually. */
         store16(s0: i32, s1: i32, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -522,7 +529,8 @@ const instructions = {
         /** [0xbd] Reinterpret bits of `s0` to i64. */
         reinterpret_f64(s0: f64): i64 { _() },
 
-        /** [0x29] Load a number from memory at the offset `s0`. */
+        /** [0x29] Load a number from memory at the offset `s0`. `memarg` is
+         * used by the instruction but can not be given manually. */
         load(s0: i64, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -531,7 +539,8 @@ const instructions = {
             return bytesToI64(bytes)
         },
         /** [0x30] Load a signed i8 from memory at the offset `s0` and extend it
-         * into an i64. */
+         * into an i64. `memarg` is used by the instruction but can not be given
+         * manually. */
         load8_s(s0: i32, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -540,7 +549,8 @@ const instructions = {
             return byte
         },
         /** [0x31] Load an unsigned i8 from memory at the offset `s0` and extend
-         * it into an i64. */
+         * it into an i64. `memarg` is used by the instruction but can not be
+         * given manually. */
         load8_u(s0: i32, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -549,7 +559,8 @@ const instructions = {
             return byte
         },
         /** [0x32] Load a signed i16 from memory at the offset `s0` and extend
-         * it into an i64. */
+         * it into an i64. `memarg` is used by the instruction but can not be
+         * given manually. */
         load16_s(s0: i32, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -558,7 +569,8 @@ const instructions = {
             return bytesToI16(bytes)
         },
         /** [0x33] Load an unsigned i16 from memory at the offset `s0` and
-         * extend it into an i64. */
+         * extend it into an i64. `memarg` is used by the instruction but can
+         * not be given manually. */
         load16_u(s0: i32, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -567,7 +579,8 @@ const instructions = {
             return bytesToI16(bytes)
         },
         /** [0x34] Load a signed i32 from memory at the offset `s0` and extend
-         * it into an i64. */
+         * it into an i64. `memarg` is used by the instruction but can not be
+         * given manually. */
         load32_s(s0: i32, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -576,7 +589,8 @@ const instructions = {
             return bytesToI32(bytes)
         },
         /** [0x35] Load an unsigned i32 from memory at the offset `s0` and
-         * extend it into an i64. */
+         * extend it into an i64. `memarg` is used by the instruction but can
+         * not be given manually. */
         load32_u(s0: i32, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -584,7 +598,8 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 4)
             return bytesToI32(bytes)
         },
-        /** [0x37] Store `s1` into memory at the offset `s0`. */
+        /** [0x37] Store `s1` into memory at the offset `s0`. `memarg` is used
+         * by the instruction but can not be given manually. */
         store(s0: cellval, s1: i64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -592,7 +607,8 @@ const instructions = {
             mem.data.splice(offset, offset + 8, ...i64ToBytes(s1))
         },
         /** [0x3c] Store an i8 `s1` represented in i64 into memory at the offset
-         * `s0`. */
+         * `s0`. `memarg` is used by the instruction but can not be given
+         * manually. */
         store8(s0: i32, s1: i64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -600,7 +616,8 @@ const instructions = {
             mem.data[s0] = s1
         },
         /** [0x3d] Store an i16 `s1` represented in i64 into memory at the
-         * offset `s0`. */
+         * offset `s0`. `memarg` is used by the instruction but can not be given
+         * manually. */
         store16(s0: i32, s1: i64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -608,7 +625,8 @@ const instructions = {
             mem.data.splice(offset, offset + 2, ...i16ToBytes(s1))
         },
         /** [0x3e] Store an i32 `s1` represented in i64 into memory at the
-         * offset `s0`. */
+         * offset `s0`. `memarg` is used by the instruction but can not be given
+         * manually. */
         store32(s0: i32, s1: i64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -677,7 +695,8 @@ const instructions = {
         /** [0xbe] Reinterpret bits of `s0` to f32. */
         reinterpret_i32(s0: i32): f32 { _() },
 
-        /** [0x2a] Load a number from memory at the offset `s0`. */
+        /** [0x2a] Load a number from memory at the offset `s0`. `memarg` is
+         * used by the instruction but can not be given manually. */
         load(s0: f32, memarg: memarg): f32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -685,7 +704,8 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 4)
             return bytesToF32(bytes)
         },
-        /** [0x38] Store `s1` into memory at the offset `s0`. */
+        /** [0x38] Store `s1` into memory at the offset `s0`. `memarg` is used
+         * by the instruction but can not be given manually. */
         store(s0: i32, s1: f32, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -754,7 +774,8 @@ const instructions = {
         /** [0xbf] Reinterpret bits of `s0` to f64. */
         reinterpret_i64(s0: i64): f64 { _() },
 
-        /** [0x2b] Load a number from memory at the offset `s0`. */
+        /** [0x2b] Load a number from memory at the offset `s0`. `memarg` is
+         * used by the instruction but can not be given manually. */
         load(s0: f64, memarg: memarg): f64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -762,7 +783,8 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 8)
             return bytesToF64(bytes)
         },
-        /** [0x39] Store `s1` into memory at the offset `s0`. */
+        /** [0x39] Store `s1` into memory at the offset `s0`. `memarg` is used
+         * by the instruction but can not be given manually. */
         store(s0: i32, s1: f64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
