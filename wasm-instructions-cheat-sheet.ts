@@ -188,25 +188,27 @@ interface Mem {
  *
  * Input parameters `s0`, `s1`, ... represent the stack values. The values are
  * popped in the ascending order of the parameters, which means the actual order
- * (defined by the WASM specification) of the instruction operands are in the
- * same direction. Input parameters `...ss` represents any number of values
- * popped from the stack. e.g. `(i32.gt_s (i32.const 2) (i32.const 1))` returns
- * 1 because the first being pushed to the stack is the first operand.
+ * (defined by the WebAssembly specification) of the instruction operands are in
+ * the same direction. e.g. `(i32.gt_s (i32.const 2) (i32.const 1))` returns 1
+ * (which means `2 > 1 == true`). The first operand `2` is pushed to the stack
+ * before the second operand `1`. This also goes with separated instructions:
+ *
+ * ```
+ * i32.const 2
+ * i32.const 1
+ * i32.gt_s
+ * ```
+ *
+ * Input parameter `...ss` represents any number of values popped from the
+ * stack.
  *
  * Other parameters (like `x`, `y`, `funcidx`) represent the instants of the
- * instruction, in the same order of what they are defined by the WASM
+ * instruction, in the same order of what they are defined by the WebAssembly
  * specification.
  *
- * The return type represents the result given back to the stack.
- *
- * The doc comment of an instruction uses a signature syntax: `instruction_name
- * instant_names : input_params -> output_params`, where `instruction_name` is
- * the name of the instruction; `instant_names` are names of the instants
- * (optional); `input_params` are names of the operands popped from the stack
- * before the instruction body (optional); `output_params` are names of the
- * values pushed to the stack after the instruction body (optional). The
- * `input_params` are always in the reversed order agianst the `sN` parameters
- * declared by the instruction function.
+ * The return type represents the result given back to the stack. If the return
+ * type is an array, the values in the array are pushed one by one back to the
+ * stack.
  */
 const instructions = {
     /// Numeric Instructions ///
@@ -733,7 +735,6 @@ const instructions = {
 
         any_true(s0: v128): bool { _() },
 
-        /** v128.load memarg : index -> value */
         load(s0: v128, memarg: memarg): v128 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -741,7 +742,6 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 16)
             return bytesToV128(bytes)
         },
-        /** v128.load memarg : index value -> nil */
         store(s0: val, s1: v128, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
@@ -1128,24 +1128,20 @@ const instructions = {
     /// Table Instructions ///
 
     table: {
-        /** table.get x : offset -> value */
         get(s0: i32, tableidx: u32): val {
             let tab = assertGetTab(tableidx)
             if (s0 >= tab.elem.length) { trap() }
             return tab.elem[s0]
         },
-        /** table.set x : offset value -> nil */
         set(s0: ref, s1: i32, tableidx: u32): void {
             let tab = assertGetTab(tableidx)
             if (s1 >= tab.elem.length) { trap() }
             tab.elem[s1] = s0
         },
-        /** table.set x : offset value -> nil */
         size(tableidx: u32): i32 {
             let tab = assertGetTab(tableidx)
             return tab.elem.length
         },
-        /** table.grow x : value length -> original_size */
         grow(s0: i32, s1: ref, tableidx: u32): i32 {
             let tab = assertGetTab(tableidx)
             let sz = tab.elem.length
@@ -1157,7 +1153,6 @@ const instructions = {
             }
             return err
         },
-        /** table.fill x : start value length -> nil */
         fill(s0: i32, s1: ref, s2: i32, tableidx: u32): void {
             let tab = assertGetTab(tableidx)
             if (s2 + s0 > tab.elem.length) { trap() }
@@ -1165,7 +1160,6 @@ const instructions = {
             instructions.table.set(s1, s2, tableidx)
             instructions.table.fill(s0 - 1, s1, s2 + 1, tableidx)
         },
-        /** table.copy x y : start_x start_y length -> nil */
         copy(s0: i32, s1: i32, s2: i32, tableidx0: u32, tableidx1: u32): void {
             let tab0 = assertGetTab(tableidx0)
             let tab1 = assertGetTab(tableidx1)
@@ -1186,7 +1180,6 @@ const instructions = {
             }
             instructions.table.copy(s0 - 1, pop()!, pop()!, tableidx0, tableidx1)
         },
-        /** table.init x elemidx : table_offset elem_offset length -> nil */
         init(s0: i32, s1: i32, s2: i32, tableidx: u32, elemidx: u32): void {
             let tab = assertGetTab(tableidx)
             let elem = assertGetElem(elemidx)
@@ -1320,10 +1313,10 @@ const instructions = {
     br_table(s0: u32, ...labelidxs: u32[]): void { _() },
 
     /** [0x10] Call a function. */
-    call(funcidx: u32) { _() },
+    call(funcidx: u32, functype: valtype) { _() },
     /** [0x11] Call the function of index `s0` in a table. The table index is
      * optional if there is only one table. */
-    call_indirect(s0: i32, tableidx: u32, funcidx: u32) { _() },
+    call_indirect(s0: i32, tableidx: u32, funcidx: u32, functype: valtype) { _() },
     /** [0x12] The tail-call version of `call`. */
     return_call(funcidx: u32) { _() },
     /** [0x13] The tail-call version of `call_indirect`. */
