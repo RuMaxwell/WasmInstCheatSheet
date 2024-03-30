@@ -20,7 +20,9 @@ type f32x4 = number
 type f64x2 = number
 type vec<t, len> = number[]
 type addr = number
-type val = num | v128 | ref
+/** a stack value */
+type val = cellval | FrameActivation
+type cellval = num | v128 | ref
 type num = i32 | i64 | f32 | f64
 type ref = funcref | externref
 type funcref = number
@@ -34,6 +36,7 @@ type numtype = typeof i32typecode | typeof i64typecode
 type vectype = typeof v128typecode
 type reftype = typeof funcreftypecode | typeof externreftypecode
 type refnull<t> = null
+type instruction_byte = number
 
 type memarg = { offset: u32, align: u32 }
 
@@ -50,26 +53,32 @@ const PAGE_SIZE = 65536
 
 /** Stands for some operation that does not representable by TypeScript or not
  * learned from the specification. */
-function _(): never { throw '' }
+function _(...args: any[]): never { throw '' }
 /** Stands for a preprocessor operation that does not do anything in the
  * runtime. */
 function virtual(): void { }
 /** Triggers an error. */
 function trap(): never { throw 'trap' }
 /** States that the operation requires a condition being true to run. */
-function assert(statement: boolean): void { }
+function assert(statement: boolean): void { if (!statement) trap() }
 /** Pushes a value to the evaluation stack. */
-function push(value: val): void { }
+function push(value: cellval): void { _() }
+/** Pushes a frame activation to the stack. */
+function push_frame_activation(value: FrameActivation): void { _() }
+/** Pushes a label to the stack with the current function as the continuation. */
+function push_label(value: Label): void { _() }
+function jump_to_start_of_instruction(): void { _() }
 /** Pops a value from the evaluation stack. */
-function pop(): val | undefined { _() }
+function pop(): cellval | undefined { _() }
+function pop_label(): Label | undefined { _() }
 /** Gets the type code of a value. */
-function typeOf(value: val): valtype { _() }
+function typeOf(value: cellval): valtype { _() }
 /** Gets the runtime frame context. */
 function F(): Frame { _() }
 /** Gets the runtime store context. */
 function S(): Store { _() }
 /** Tests whether a cell, a global, a table, or a memory object exists. */
-function exists(cell: Cell | Glob | Tab | Mem): boolean { return !!cell }
+function exists(cell: Cell | Glob | Tab | Mem | Data | Func): boolean { return !!cell }
 /** Grows a table by `n` bytes with initial value `initVal`. */
 function growTab(tab: Tab, n: i32, initVal: ref): boolean { _() }
 /** Grows a memory by `n` bytes. */
@@ -100,6 +109,8 @@ function f32ToBytes(value: f32): i8[] { _() }
 function f64ToBytes(value: f64): i8[] { _() }
 /** Reinterprets a v128 into 16 consecutive bytes. */
 function v128ToBytes(value: v128): i8[] { _() }
+/** Gets the return types of a function type. */
+function return_types_of(type: anytype): anytype[] { _() }
 
 /** Asserts that a table at `tableidx` exists and returns it. */
 function assertGetTab(tableidx: u32): Tab {
@@ -128,6 +139,14 @@ function assertGetMem(memidx: u32): Mem {
     return mem
 }
 
+function assertGetData(dataidx: u32): Data {
+    let dataaddr = F().module.dataaddrs[dataidx]
+    assert(exists(dataaddr))
+    let data = S().datas[dataaddr.value]
+    assert(exists(data))
+    return data
+}
+
 /** Represents the runtime frame. */
 interface Frame {
     locals: Cell[]
@@ -136,12 +155,25 @@ interface Frame {
         tableaddrs: Cell[]
         elemaddrs: Cell[]
         memoryaddrs: Cell[]
+        dataaddrs: Cell[]
+        funcaddrs: Cell[]
     }
 }
 
 /** Represents a cell. */
 interface Cell {
-    value: val
+    value: cellval
+}
+
+type FrameActivation = {
+    frame: Frame
+    arity: number
+}
+
+/** Represents a runtime label. */
+type Label = {
+    arity: number
+    instruction_bytes: instruction_byte[]
 }
 
 /** Represents the runtime store. */
@@ -150,12 +182,14 @@ interface Store {
     tables: Tab[]
     elems: Elem[]
     mems: Mem[]
+    datas: Data[]
+    funcs: Func[]
 }
 
 /** Represents a global variable. */
 interface Glob {
     mut: mut
-    value: val
+    value: cellval
 }
 
 /** Represents the mutability of a global variable. */
@@ -166,19 +200,37 @@ enum mut {
 
 /** Represents a table. */
 interface Tab {
-    elem: val[]
+    elem: cellval[]
 }
 
 /** Represents an element. */
 interface Elem {
-    elem: val[]
+    elem: cellval[]
 }
 
-/** Represents a memory. */
+/** Represents a memory instance. */
 interface Mem {
     data: i8[]
     /** Size of `mem` is length of `mem.data` divided by page_size */
     get size(): i32
+}
+
+/** Represents a data instance. */
+interface Data {
+    data: i8[]
+}
+function emptyData(): Data {
+    return { data: [] }
+}
+
+/** Represents a function instance. */
+interface Func {
+    type: anytype
+    code: {
+        locals: anytype[]
+        body: instruction_byte[]
+    }
+    module: Frame['module']
 }
 
 /**
@@ -199,7 +251,7 @@ interface Mem {
  * i32.gt_s
  * ```
  *
- * Input parameter `...ss` represents any number of values popped from the
+ * Input parameter `ss` represents any number of values popped from the
  * stack.
  *
  * Other parameters (like `x`, `y`, `funcidx`) represent the instants of the
@@ -215,7 +267,7 @@ const instructions = {
 
     i32: {
         /** [0x41] Push an instant number. */
-        const(x: u32): i32 { _() },
+        const(x: u32): i32 { return x },
 
         /** [0x67] Count the leading zeros of `s0`. */
         clz(s0: i32): i32 { _() },
@@ -375,7 +427,7 @@ const instructions = {
     },
     i64: {
         /** [0x42] Push an instant number. */
-        const(x: u64): i64 { _() },
+        const(x: u64): i64 { return x },
 
         /** [0x79] Count the leading zeros of `s0`. */
         clz(s0: i64): i64 { _() },
@@ -533,7 +585,7 @@ const instructions = {
             return bytesToI32(bytes)
         },
         /** [0x37] Store `s1` into memory at the offset `s0`. */
-        store(s0: val, s1: i64, memarg: memarg): void {
+        store(s0: cellval, s1: i64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 8 > mem.data.length) { trap() }
@@ -566,7 +618,7 @@ const instructions = {
     },
     f32: {
         /** [0x43] Push an instant number. */
-        const(x: f32): f32 { _() },
+        const(x: f32): f32 { return x },
 
         /** [0x8b] Get the absolute value of `s0`. */
         abs(s0: f32): f32 { return Math.abs(s0) },
@@ -643,7 +695,7 @@ const instructions = {
     },
     f64: {
         /** [0x44] Push an instant number. */
-        const(x: f64): f64 { _() },
+        const(x: f64): f64 { return x },
 
         /** [0x99] Get the absolute value of `s0`. */
         abs(s0: f64): f64 { return Math.abs(s0) },
@@ -722,7 +774,23 @@ const instructions = {
     /// Vector Instructions ///
 
     v128: {
-        const(x: i128): v128 { _() },
+        /** Push an instant i128.
+         *
+         * An i128 instant is in one of the following forms:
+         * - `i8x16` i8_0 i8_1 ... i8_15
+         * - `i16x8` i16_0 i16_1 ... i16_7
+         * - `i32x4` i32_0 i32_1 i32_2 i32_3
+         * - `i64x2` i64_0 i64_1
+         *
+         * The numbers are given in little-endian order, in other words, the
+         * first number carries the least significant bytes, and the last number
+         * carries the most significant bytes. For example, the same value
+         * `0xffeeddccbbaa99887766554433221100` can be given `i8x16 0x00 0x11
+         * 0x22 0x33 0x44 0x55 0x66 0x77 0x88 0x99 0xaa 0xbb 0xcc 0xdd 0xee
+         * 0xff` or `i16x8 0x1100 0x3322 0x5544 0x7766 0x9988 0xbbaa 0xddcc
+         * 0xffee`.
+         */
+        const(x: i128): v128 { return x },
 
         not(s0: v128): v128 { _() },
 
@@ -742,7 +810,7 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 16)
             return bytesToV128(bytes)
         },
-        store(s0: val, s1: v128, memarg: memarg): void {
+        store(s0: cellval, s1: v128, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 16 > mem.data.length) { trap() }
@@ -756,17 +824,21 @@ const instructions = {
 
         /** Duplicate an i8 (stored as i32) value 16 times to produce an i8x16.
          * */
-        splat(s0: i32): i8x16 { _() },
+        splat(s0: i32): i8x16 { return bytesToV128(new Array(16).fill(s0)) },
 
         /** Select the `x`th lane of `s0` (`x` < 16) and return the unpacked
          * value. */
-        extract_lane_u(s0: i8x16, x: u8): u32 { _() },
+        extract_lane_u(s0: i8x16, x: u8): u32 { return v128ToBytes(s0)[x] },
         /** Select the `x`th lane of `s0` (`x` < 16) and return the unpacked
          * value. */
-        extract_lane_s(s0: i8x16, x: u8): s32 { _() },
+        extract_lane_s(s0: i8x16, x: u8): s32 { return v128ToBytes(s0)[x] },
         /** Replace the `x`th lane of `s0` (`x` < 16) into `s1` and return the
          * replaced v128. */
-        replace_lane(s0: i8x16, s1: i32, x: u8): i8x16 { _() },
+        replace_lane(s0: i8x16, s1: i32, x: u8): i8x16 {
+            let bytes = v128ToBytes(s0)
+            bytes[x] = s1
+            return bytesToV128(bytes)
+        },
 
         eq(s0: i8x16, s1: i8x16): bool { _() },
         ne(s0: i8x16, s1: i8x16): bool { _() },
@@ -1066,9 +1138,13 @@ const instructions = {
     /// Reference Instructions ///
 
     ref: {
-        null(x: reftype): refnull<typeof x> { _() },
-        is_null(s0: reftype): bool { _() },
-        func(funcidx: u32): addr { _() },
+        null(x: reftype): refnull<typeof x> { return null },
+        is_null(s0: ref): bool { return s0 === null ? 1 : 0 },
+        func(funcidx: u32): addr {
+            let address = F().module.funcaddrs[funcidx]
+            assert(exists(address))
+            return address.value
+        },
     },
 
     /// Variable Instructions ///
@@ -1080,21 +1156,21 @@ const instructions = {
         _(): void { virtual() },
         /** [0x20] Syntax: `local.get $var`. Load the value of local variable
          * onto the stack. */
-        get(localidx: u32): val {
+        get(localidx: u32): cellval {
             let local = F().locals[localidx]
             assert(exists(local))
             return local.value
         },
         /** [0x21] Syntax: `local.set $var`. Pop the stack and store the value
          * into the local variable. */
-        set(s0: val, localidx: u32): void {
+        set(s0: cellval, localidx: u32): void {
             let local = F().locals[localidx]
             assert(exists(local))
             local.value = s0
         },
         /** [0x22] Syntax: `local.tee $var`. Store the value at top of the stack
          * into the local variable. */
-        tee(s0: val, localidx: u32): val {
+        tee(s0: cellval, localidx: u32): cellval {
             instructions.local.set(s0, localidx)
             return s0
         },
@@ -1106,7 +1182,7 @@ const instructions = {
         _(): void { virtual() },
         /** [0x23] Syntax: `global.get $var`. Load the value of global variable
          * onto the stack. */
-        get(globalidx: u32): val {
+        get(globalidx: u32): cellval {
             let globaladdr = F().module.globaladdrs[globalidx]
             assert(exists(globaladdr))
             let glob = S().globals[globaladdr.value]
@@ -1115,7 +1191,7 @@ const instructions = {
         },
         /** [0x24] Syntax: `global.set $var`. Pop the stack and store the value
          * into the global variable. */
-        set(s0: val, globalidx: u32): void {
+        set(s0: cellval, globalidx: u32): void {
             let globaladdr = F().module.globaladdrs[globalidx]
             assert(exists(globaladdr))
             let glob = S().globals[globaladdr.value]
@@ -1128,7 +1204,7 @@ const instructions = {
     /// Table Instructions ///
 
     table: {
-        get(s0: i32, tableidx: u32): val {
+        get(s0: i32, tableidx: u32): cellval {
             let tab = assertGetTab(tableidx)
             if (s0 >= tab.elem.length) { trap() }
             return tab.elem[s0]
@@ -1222,28 +1298,71 @@ const instructions = {
             }
         },
         /** [0xfc][0x0a] Copies data from one region of memory to another.
-         * Source memory region starts from pointer `s1`. Destination memory
-         * region starts from pointer `s0`. `s2` is the number of bytes to copy.
+         * Source memory region starts from index `s1`. Destination memory
+         * region starts from index `s0`. `s2` is the number of bytes to copy.
          * */
-        copy(s0: i32, s1: i32, s2: i32): void {
+        copy(s0/*d*/: i32, s1/*s*/: i32, s2/*n*/: i32): void {
             let mem = assertGetMem(0)
             if (s0 + s2 > mem.data.length) { trap() }
             if (s1 + s2 > mem.data.length) { trap() }
             if (s2 === 0) { return }
-            push(s0)
-            push(s1)
-            // TODO: Continue at memory.copy.
+            if (s0 <= s1) {
+                let t = instructions.i32.load8_u(s1, { offset: 0, align: 0 })
+                instructions.i32.store8(s0, t, { offset: 0, align: 0 })
+                assert(s0 + 1 < (1 << 32))
+                push(s0 + 1)
+                assert(s1 + 1 < (1 << 32))
+                push(s1 + 1)
+            } else {
+                assert(s0 + s2 - 1 < (1 << 32))
+                assert(s1 + s2 - 1 < (1 << 32))
+                let t = instructions.i32.load8_u(s1 + s2 - 1, { offset: 0, align: 0 })
+                instructions.i32.store8(s0 + s2 - 1, t, { offset: 0, align: 0 })
+                push(s0)
+                push(s1)
+            }
+            let s = pop()!
+            let d = pop()!
+            instructions.memory.copy(d, s, s2 - 1)
         },
         /** [0xfc][0x0b] Sets all bytes in a memory region to byte `s1`. The
-         * memory region starts from pointer `s0` and has a length of `s2`
-         * bytes. */
-        fill(s0: i32, s1: i32, s2: i32): void {
+         * memory region starts from index `s0` and has a length of `s2` bytes.
+         * */
+        fill(s0/*d*/: i32, s1/*val*/: i32, s2/*n*/: i32): void {
             let mem = assertGetMem(0)
             if (s0 + s2 > mem.data.length) { trap() }
             if (s2 === 0) { return }
-            push(s0)
-            push(s1)
-            // TODO: Continue at memory.fill 16.
+            instructions.i32.store8(s0, s1, { offset: 0, align: 0 })
+            assert(s0 + 1 < (1 << 32))
+            instructions.memory.fill(s0 + 1, s1, s2 - 1)
+        },
+        /** Syntax: `memory.init dataidx`. Initializes all bytes in a memory
+         * region to a data region. The memory region starts from index `s0` and
+         * has a length of `s2` bytes. The data region starts from index `s1`
+         * and has a length of `s2` data instances, and is picked from the data
+         * instance at the `dataidx`-th data address. */
+        init(s0/*d*/: i32, s1/*s*/: i32, s2/*n*/: i32, dataidx: u32): void {
+            let mem = assertGetMem(0)
+            let data = assertGetData(dataidx)
+            if (s0 + s2 > mem.data.length) { trap() }
+            if (s1 + s2 > data.data.length) { trap() }
+            if (s2 === 0) { return }
+            let b = data.data[s1]
+            instructions.i32.store8(s0, b, { offset: 0, align: 0 })
+            assert(s0 + 1 < (1 << 32))
+            assert(s1 + 1 < (1 << 32))
+            instructions.memory.init(s0 + 1, s1 + 1, s2 - 1, dataidx)
+        },
+    },
+    data: {
+        /** Syntax: `data.drop dataidx`. Replace the data instance at the
+         * `dataidx`-th data address with the empty data instance. */
+        drop(dataidx: u32): void {
+            let dataaddr = F().module.dataaddrs[dataidx]
+            assert(exists(dataaddr))
+            let data = S().datas[dataaddr.value]
+            assert(exists(data))
+            S().datas[dataaddr.value] = emptyData()
         },
     },
 
@@ -1269,10 +1388,11 @@ const instructions = {
      * preprocessor declaration. */
     loop(): void { _() },
 
-    /** [0x04] Syntax: `(if (then ...) (else ...))`. Execute a statement if the
-     * value popped from the stack is true (non-zero), or optionally executes
-     * another statement if the value is false (0). */
-    if(s0: val): void { _() },
+    /** [0x04] Syntax: `(if (then ...))` or `(if (then ...) (else ...))`.
+     * Execute a statement if the value popped from the stack is true
+     * (non-zero), or optionally executes another statement if the value is
+     * false (0). */
+    if(s0: cellval): void { _() },
 
     /** [0x0b] Indicates the end of a `block`, `loop`, `if`, or `else`. */
     end(): void { _() },
@@ -1283,7 +1403,7 @@ const instructions = {
      * returns those values. If there are more values than that the function's
      * return type specifies, then the first N values are returned, and the
      * excess values are popped from the stack and discarded. */
-    return(...ss: val[]): void { _() },
+    return(ss: cellval[]): void { _() },
 
     /** [0x0c] Syntax: `br $label`. Unconditionally branch to a `loop`, `block`,
      * or `if`. If its target is a `loop`, it jumps to the start of the loop. If
@@ -1313,7 +1433,19 @@ const instructions = {
     br_table(s0: u32, ...labelidxs: u32[]): void { _() },
 
     /** [0x10] Call a function. */
-    call(funcidx: u32, functype: valtype) { _() },
+    call(ss: cellval[], funcidx: u32, functype: valtype) {
+        let func = S().funcs[funcidx]
+        assert(exists(func))
+        assert(ss.length === func.code.locals.length)
+        let frame: Frame = {
+            module: func.module,
+            locals: ss.map((value) => ({ value })),
+        }
+        let arity = return_types_of(func.type).length
+        push_frame_activation({ frame, arity })
+        push_label({ arity, instruction_bytes: func.code.body })
+        jump_to_start_of_instruction()
+    },
     /** [0x11] Call the function of index `s0` in a table. The table index is
      * optional if there is only one table. */
     call_indirect(s0: i32, tableidx: u32, funcidx: u32, functype: valtype) { _() },
@@ -1330,7 +1462,7 @@ const instructions = {
      * `select` syntax only allows the values of WebAssembly MVP types (`i32`,
      * `i64`, `f32`, `f64`). While the alternative, `select (result T)`, allows
      * other types, such as two `externref` values. */
-    select(s0: i32, s1: val, s2: val, valtype: valtype): val {
+    select(s0: i32, s1: cellval, s2: cellval, valtype: valtype): cellval {
         assert(typeOf(s0) === valtype)
         assert(typeOf(s1) === valtype)
         return s2 ? s0 : s1;
