@@ -1,20 +1,29 @@
 # Wasm Instructions Cheat Sheet
 
-This is (or pursues to be) a complete handbook of using the WebAssembly Text
-Format. You can find a comprehensible set of information for each WebAssembly
-instruction, including:
+This manual ([Wasm Instructions Cheat Sheet](./wasm-instructions-cheat-sheet.ts)
+) aims to provide an exhaustive reference for understanding and using 
+WebAssembly instructions in the text format.
 
-- Input values: What types and how many of the values are popped from the stack
-  and are given by instant numbers;
-- Output values: what types and how many of the values are pushed back to the
-  stack;
-- Semantics: what does the instruction do;
-- Execution: how does the instruction achieve its purpose, represented by pseudo
-  code written in TypeScript;
-- (Optional) Opcode: the code of the instruction in the binary format.
-- (Optional) Syntax: how should you write this instruction in the text format.
+You will find comprehensive information about each WebAssembly instruction,
+covering:
 
-For example, the instruction `i32.const` is defined as:
+- **Input Values**: The number and type(s) of values that are taken from the
+  stack or given with the instruction as arguments.
+- **Output Values**: The number and type(s) of values that are returned and
+  pushed back to the stack.
+- **Semantics**: A description of what the instruction does.
+- **Execution**: Pseudo code written in TypeScript, illustrating how the
+  instruction achieves its purpose.
+- **(Optional) Opcode**: The code representing the instruction in the binary
+  format.
+- **(Optional) Syntax**: An example of how to write the instruction in the text
+  format.
+
+## Examples
+
+Let's learn how to use this manual by examples.
+
+The instruction `i32.const` is defined as:
 
 ```typescript
 const instructions = {
@@ -23,7 +32,7 @@ const instructions = {
     // ... other instructions
 
     /** [0x41] Push an instant number. */
-    const(x: u32): i32 { return x },
+    const(x: i32): i32 { return x },
 
     // ... other instructions
   },
@@ -31,41 +40,40 @@ const instructions = {
 }
 ```
 
-The `instructions` variable contains the instruction definitions. From there we
-know about the `i32.const` instruction from the path to the method
-`instructions.i32.const`. This method has several significant parts:
+The `instructions` object houses the definition for the `i32.const` instruction
+at `instructions.i32.const`. It includes the following components:
 
-- The documentation comments between `/**` and `*/`;
-- The name, which is `const`;
-- The parameter list: `(x: u32)`;
-- The return type: `: i32`;
-- The body: `{ return x }`.
+- Documentation comments (between `/**` and `*/`)
+- Name (`const`)
+- Parameter list (`(x: i32)`)
+- Return type (`: i32`)
+- Body (pseudocode): `{ return x }`
 
-The documentation comments provide the opcode of the instruction (the code of
-the instruction in the binary format), i.e. `0x41`, and describe that the
-instruction pushes an instant number to the stack.
+The documentation comments provide the opcode (binary representation) of the
+instruction (in this case, `0x41`) and explaining that it pushes an instant
+value to the stack.
 
-> An instant number is a value directly provided with the instruction, instead
-> of popped from the stack.
+> Instant values are explicitly specified within the instruction rather than
+> being taken from the stack.
 
-The parameter list declares all input values that the instruction requires. For
-`i32.const`, an `u32` parameter `x` is declared. From its name, we know that it
-is an instant number instead of stack value, because its name is not of a
-certain form (we will cover that later). Because it is an instant number, we
-must provide it with the instruction, e.g. `i32.const 0`. From the documentation
-comments, we know that this is the number pushed to the stack.
+The parameter list defines the single input required by the instruction, namely
+an 32-bit integer (`i32`) `x` (which serves as an instant value).
 
-The return type declares all output values that the instruction will produce. If
-it is an array (like `[u32, u32]`), it means that the instruction produces
-multiple outputs. In this case, the `i32.const` instruction only produces one
-`u32` value, so after its execution, a new `u32` value will be pushed to the
-stack.
+The return type specifies the data type of the single value produced (a 32-bit
+integer, `i32`). If the return type is an array, the values are pushed one by
+one to the stack.
 
-The body contains pseudo code that indicates how this instruction runs. In this
-case, it is simply returning the input value, which verifies the description in
-the comments.
+The body demonstrates the operation performed by the instruction, confirming the
+commentary above.
 
-Let's see another example `i32.sub`. This time, it includes two stack values:
+Upon executing `i32.const`, the resulting `i32` value gets pushed onto the top
+of the stack. Additionally, since the input value is defined as an instant
+(rather than a stack value), users must include it when invoking the instruction
+— for instance, `i32.const 0`.
+
+
+
+Let's see another example `i32.sub`. This time, it requires two stack values:
 
 ```typescript
 const instructions = {
@@ -82,22 +90,17 @@ const instructions = {
 }
 ```
 
-Again, we know the opcode of `i32.sub` is `0x6b`, and what it does is
-subtracting the value `s1` from `s0`. What is different is that both the input
-values are stack values.
-
-The name of a stack input value is like `s0`, `s1`, `s2`... The values are
-pushed in the same order as the parameters (`s0` is pushed first), thus popped
-in the reversed order. WebAssembly defines the stack values of every instruction
-in this order. So if we want to do `3 - 2`, the correct way is
+Regarding the `i32.sub` instruction, its opcode is `0x6b`, and its purpose is
+subtracting `s1` from `s0`. Both inputs are drawn from the stack. Stack input
+names follow the pattern `s0`, `s1`, `s2`, etc. (exceptionally, `ss` for any
+number of stack values), with push order matching the order of their appearance
+in the function call. Consequently, popping occurs in reverse order. WebAssembly
+sets the stack value ordering per instruction, meaning that for arithmetic
+operations such as `3 - 2`, the proper syntax would be:
 
 `(i32.sub (i32.const 3) (i32.const 2))`
 
-instead of
-
-`(i32.sub (i32.const 2) (i32.const 3))`.
-
-or the other equivalent way:
+Alternatively, another valid arrangement could be:
 
 ```
 i32.const 2
@@ -105,12 +108,13 @@ i32.const 3
 i32.sub
 ```
 
-From the input types we know that the verification process of WebAssembly will
-ensure that the two stack values are both of type `i32` before running into the
-instruction.
+WebAssembly's validation mechanism guarantees that both stack inputs adhere to
+the `i32` type prior to processing through the `i32.sub` instruction. As evident
+in the pseudocode, the outcome results from subtracting `s1` from `s0`:
 
-The body `return s0 - s1` clearly shows that the result is by subtracting `s1`
-from `s0`.
+`{ return s0 - s1 }`
+
+
 
 Let's look at a more complicated instruction, `local.set`:
 
@@ -134,25 +138,45 @@ const instructions = {
 }
 ```
 
-The documentation comment gives a new piece of information: syntax. It gives an
-example of how to use the instruction when the input declaration is not clear
-enough. In this case, `local.set $var` is the minimum syntax of this
-instruction, and `$var` is a WebAssembly label that will be compiled to a local
-variable index (defined by the input parameter `localidx: u32`).
+Documentation comments offer syntax examples to clarify usage when input
+declarations are not enough for knowing how to use the instruction. Consider the
+`local.set` instruction, whose minimal syntax involves `local.set $var`. The
+symbol `$var` signifies a WebAssembly label that translates into a local
+variable index during compilation (as determined by the `localidx: u32` input
+parameter).
 
-`local.set` also requires a stack value (`s0`) of any numeric type (`cellval`).
+As indicated in the input requirements, `local.set` expects a single operand
+(`s0`), applicable to any numeric type (designated hereafter as `cellval`). Note
+that no value is returned, making the return type `void`.
 
-`local.set` pushes nothing back to the stack, so the return type is `void`.
+Examining the body reveals that `local.set` extracts the local variable
+associated with the current WebAssembly frame (denoted as `F()`). Within this
+frame, `locals` refers to an array containing local variables.
 
-From the body, we know that this `local.set` first gets local variable from the
-current WebAssembly Frame (`F()`). The Frame contains contextual information,
-and `locals` is an array of the local variables.
+In the body, `assert` and `exists` are two simulated behavioral methods. These
+serve as placeholders for actions typically executed by the WebAssembly runtime,
+without indicating precise placement or timing. Specifically, `assert` checks
+whether its input evaluates as true. If false, `assert` triggers a `trap`
+(error). Meanwhile, `exists` determines if a certain entity is present. Thus,
+`assert(exists(local))` implies that setting the local variable (`local.value =
+s0`) only happens when a corresponding local variable resides at
+`F().locals[localidx]`.
 
-The second line of the body uses two simulated behavior functions: `assert` and
-`exists`. A simulated behavior represents something that the WebAssembly runtime
-does, but its call position is not necessary where or when it happens. Here,
-`assert` verifies that its argument is true. If it is not, `assert` will result
-in `trap` (error). The `exists` function test whether a thing exists. The
-combination `assert(exists(local))` means that the set behavior
-`local.value = s0` happens only when a local variable at `F().locals[localidx]`
-exists.
+## Contributions
+
+This manual still needs a lot of contributions! To get started, consider helping
+me with the following tasks:
+
+- **Proofreading**: Spot typos, unclear phrases, or incorrect information in the
+  README and documentation.
+- **Expanding documentations**: Enhance our content by adding more documentations
+  or submitting issues about what you find it hard to understand.
+- **Completing missing documentations**: Fill in documentations where they are
+  left off.
+- **WebAssembly consistency**: Ensure instruction definitions (such as input and
+  output types, opcodes) align with the WebAssembly specification.
+- **Instruction accuracy**: Include more valid instructions in WebAssembly;
+  remove any non-existent ones.
+
+Your assistance is much appreciated! If you have additional ideas on how to
+enhance the project, feel free to open an issue or pull request.

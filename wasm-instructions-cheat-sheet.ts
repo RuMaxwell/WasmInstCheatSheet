@@ -1,16 +1,23 @@
+/// Types ///
+
+// Integers of different sizes.
 type i8 = number
 type i16 = number
 type i32 = number
-type bool = 0 | 1
 type i64 = number
 type i128 = number
+// Signed integers of different sizes. An integer is not signed or unsigned when
+// it is stored, but some instructions specify the signedness of its arguments.
 type s32 = number
 type s64 = number
+// Unsigned integers of different sizes.
 type u8 = number
 type u32 = number
 type u64 = number
+// Floating point numbers.
 type f32 = number
 type f64 = number
+// SIMD types.
 type v128 = number
 type i8x16 = number
 type i16x8 = number
@@ -18,28 +25,49 @@ type i32x4 = number
 type i64x2 = number
 type f32x4 = number
 type f64x2 = number
+/** Boolean value, returned from a comparison instruction, where `0` represents
+ * false and `1` represents true. If an argument needs a `bool`, you can use `0`
+ * as false and any non-zero value as true. */
+type bool = 0 | 1
+/** Consecutive list of numbers separated by spaces. e.g. `vec<i32, 4>` can be
+ * given as `1 2 3 4`. */
 type vec<t, len> = number[]
+/** An index to a frame instance. */
 type addr = number
-/** a stack value */
+/** A stack value. */
 type val = cellval | FrameActivation
+/** A numeric value. */
 type cellval = num | v128 | ref
+/** A number. */
 type num = i32 | i64 | f32 | f64
+/** A reference (pointer). */
 type ref = funcref | externref
+/** A function reference (pointer). */
 type funcref = number
+/** An external reference (pointer). */
 type externref = number
+/** A number representing an arbitrary type. */
 type anytype = typeidx | typeref
+/** The index of a predefined type. */
 type typeidx = u32
+/** The reference to a type. */
 type typeref = u32
+/** The type of a numeric value. */
 type valtype = numtype | vectype | reftype
+/** The type of a number. */
 type numtype = typeof i32typecode | typeof i64typecode
     | typeof f32typecode | typeof f64typecode
+/** The type of a SIMD value. */
 type vectype = typeof v128typecode
+/** The type of a reference. */
 type reftype = typeof funcreftypecode | typeof externreftypecode
+/** The type of the null reference. */
 type refnull<t> = null
+/** A byte in an instruction segment. */
 type instruction_byte = number
-
+/** The argument given when a memory instruction is executed. */
 type memarg = { offset: u32, align: u32 }
-
+// Predefined type codes.
 const i32typecode = 0x7f
 const i64typecode = 0x7e
 const f32typecode = 0x7d
@@ -47,15 +75,15 @@ const f64typecode = 0x7c
 const v128typecode = 0x7b
 const funcreftypecode = 0x70
 const externreftypecode = 0x6f
+// Size of a page (64KiB).
 const PAGE_SIZE = 65536
 
 /// Simulated behaviors of the runtime ///
 
-/** Stands for some operation that does not representable by TypeScript or not
- * learned from the specification. */
+/** A placeholder for some operation that does not representable by TypeScript
+ * or not yet learned from the specification. */
 function _(...args: any[]): never { throw '' }
-/** Stands for a preprocessor operation that does not do anything in the
- * runtime. */
+/** A preprocessor operation that does not do anything in the runtime. */
 function virtual(): void { }
 /** Triggers an error. */
 function trap(): never { throw 'trap' }
@@ -147,7 +175,7 @@ function assertGetData(dataidx: u32): Data {
     return data
 }
 
-/** Represents the runtime frame. */
+/** The runtime frame. */
 interface Frame {
     locals: Cell[]
     module: {
@@ -160,23 +188,24 @@ interface Frame {
     }
 }
 
-/** Represents a cell. */
+/** An existence that stores a numeric value. */
 interface Cell {
     value: cellval
 }
 
+/** A frame instance that is created on function calls. */
 type FrameActivation = {
     frame: Frame
     arity: number
 }
 
-/** Represents a runtime label. */
+/** A structure that is created on function calls. */
 type Label = {
     arity: number
     instruction_bytes: instruction_byte[]
 }
 
-/** Represents the runtime store. */
+/** The runtime store. */
 interface Store {
     globals: Glob[]
     tables: Tab[]
@@ -186,36 +215,36 @@ interface Store {
     funcs: Func[]
 }
 
-/** Represents a global variable. */
+/** A global variable. */
 interface Glob {
     mut: mut
     value: cellval
 }
 
-/** Represents the mutability of a global variable. */
+/** The mutability of a global variable. */
 enum mut {
     const = 0x00,
     var = 0x01,
 }
 
-/** Represents a table. */
+/** A table. */
 interface Tab {
     elem: cellval[]
 }
 
-/** Represents an element. */
+/** An element. */
 interface Elem {
     elem: cellval[]
 }
 
-/** Represents a memory instance. */
+/** A memory instance. */
 interface Mem {
     data: i8[]
     /** Size of `mem` is length of `mem.data` divided by page_size */
     get size(): i32
 }
 
-/** Represents a data instance. */
+/** A data instance. */
 interface Data {
     data: i8[]
 }
@@ -223,7 +252,7 @@ function emptyData(): Data {
     return { data: [] }
 }
 
-/** Represents a function instance. */
+/** A function instance. */
 interface Func {
     type: anytype
     code: {
@@ -233,40 +262,13 @@ interface Func {
     module: Frame['module']
 }
 
-/**
- * Example:
- *
- * `i32.const` represents the instruction `i32.const`.
- *
- * Input parameters `s0`, `s1`, ... represent the stack values. The values are
- * pushed in the same order as the parameters, which means the actual order
- * (defined by the WebAssembly specification) of the instruction operands are in
- * the same direction. e.g. `(i32.gt_s (i32.const 2) (i32.const 1))` returns 1
- * (which means `2 > 1 == true`). The first operand `2` is pushed to the stack
- * before the second operand `1`. This also goes with separated instructions:
- *
- * ```
- * i32.const 2
- * i32.const 1
- * i32.gt_s
- * ```
- *
- * Input parameter `ss` represents any number of values popped from the stack.
- *
- * Other parameters (like `x`, `y`, `funcidx`) represent the instants of the
- * instruction, in the same order of what they are defined by the WebAssembly
- * specification.
- *
- * The return type represents the result given back to the stack. If the return
- * type is an array, the values in the array are pushed one by one back to the
- * stack.
- */
+/** Please check the README for how to read the definitions. */
 const instructions = {
     /// Numeric Instructions ///
 
     i32: {
         /** [0x41] Push an instant number. */
-        const(x: u32): i32 { return x },
+        const(x: i32): i32 { return x },
 
         /** [0x67] Count the leading zeros of `s0`. */
         clz(s0: i32): i32 { _() },
@@ -434,7 +436,7 @@ const instructions = {
     },
     i64: {
         /** [0x42] Push an instant number. */
-        const(x: u64): i64 { return x },
+        const(x: i64): i64 { return x },
 
         /** [0x79] Count the leading zeros of `s0`. */
         clz(s0: i64): i64 { _() },
