@@ -4,6 +4,12 @@ This manual ([Wasm Instructions Cheat Sheet](./wasm-instructions-cheat-sheet.ts)
 ) aims to provide an exhaustive reference for understanding and using 
 WebAssembly instructions in the text format.
 
+This manual assumes that you already know about the WebAssembly Text Format. If
+you don't, I recommend you read these materials first to grab a feeling of it:
+
+- [The Specification](https://webassembly.github.io/spec/core/text/index.html)
+- [The Instruction Reference](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference)
+
 You will find comprehensive information about each WebAssembly instruction,
 covering:
 
