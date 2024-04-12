@@ -533,7 +533,7 @@ const instructions = {
 
         /** [0x29] Load a number from memory at the offset `s0`. `memarg` is
          * used by the instruction but can not be given manually. */
-        load(s0: i64, memarg: memarg): i64 {
+        load(s0: i32, memarg: memarg): i64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 8 > mem.data.length) { trap() }
@@ -602,7 +602,7 @@ const instructions = {
         },
         /** [0x37] Store `s1` into memory at the offset `s0`. `memarg` is used
          * by the instruction but can not be given manually. */
-        store(s0: cellval, s1: i64, memarg: memarg): void {
+        store(s0: i32, s1: i64, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 8 > mem.data.length) { trap() }
@@ -699,7 +699,7 @@ const instructions = {
 
         /** [0x2a] Load a number from memory at the offset `s0`. `memarg` is
          * used by the instruction but can not be given manually. */
-        load(s0: f32, memarg: memarg): f32 {
+        load(s0: i32, memarg: memarg): f32 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 4 > mem.data.length) { trap() }
@@ -778,7 +778,7 @@ const instructions = {
 
         /** [0x2b] Load a number from memory at the offset `s0`. `memarg` is
          * used by the instruction but can not be given manually. */
-        load(s0: f64, memarg: memarg): f64 {
+        load(s0: i32, memarg: memarg): f64 {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 8 > mem.data.length) { trap() }
@@ -834,7 +834,7 @@ const instructions = {
             let bytes = mem.data.slice(offset, offset + 16)
             return bytesToV128(bytes)
         },
-        store(s0: cellval, s1: v128, memarg: memarg): void {
+        store(s0: i32, s1: v128, memarg: memarg): void {
             let mem = assertGetMem(0)
             let offset = s0 + memarg.offset
             if (offset + 16 > mem.data.length) { trap() }
@@ -1228,6 +1228,11 @@ const instructions = {
     /// Table Instructions ///
 
     table: {
+        /** Syntax: `(table $label 2 anyfunc)`. Declares a table of initial size
+         * `size` and element type `type`. The label is optional. */
+        _(size: i32, type: typeidx): void {
+            _()
+        },
         get(s0: i32, tableidx: u32): cellval {
             let tab = assertGetTab(tableidx)
             if (s0 >= tab.elem.length) { trap() }
@@ -1293,6 +1298,12 @@ const instructions = {
         },
     },
     elem: {
+        /** Syntax: `(elem $table elem0 elem1 ...)`. Initialize the table at
+         * `tableidx` with the elements `elems`. If `tableidx` is not provided,
+         * it defaults to the only table declared. */
+        _(tableidx?: u32, ...elems: i32[]) {
+            _()
+        },
         drop(elemidx: u32): void {
             let elem = assertGetElem(elemidx)
             elem.elem = []
@@ -1456,8 +1467,8 @@ const instructions = {
      *   (i32.const 42)*/
     br_table(s0: u32, ...labelidxs: u32[]): void { _() },
 
-    /** [0x10] Call a function. */
-    call(ss: cellval[], funcidx: u32, functype: valtype) {
+    /** [0x10] Syntax: `(call $fn)`. Call a function. */
+    call(ss: cellval[], funcidx: u32) {
         let func = S().funcs[funcidx]
         assert(exists(func))
         assert(ss.length === func.code.locals.length)
@@ -1470,9 +1481,12 @@ const instructions = {
         push_label({ arity, instruction_bytes: func.code.body })
         jump_to_start_of_instruction()
     },
-    /** [0x11] Call the function of index `s0` in a table. The table index is
-     * optional if there is only one table. */
-    call_indirect(s0: i32, tableidx: u32, funcidx: u32, functype: valtype) { _() },
+    /** [0x11] Syntax: `(call_indirect $table (param i32) (result i32)
+     * (i32.const 0))` or `(call_indirect $table (type $func-type) (i32.const
+     * 0))`. Call the function of index `s0` in a table. The table index is
+     * optional if there is only one table. The type signature (`functype`) is
+     * required for type checking. */
+    call_indirect(s0: i32, functype: valtype, tableidx?: u32) { _() },
     /** [0x12] The tail-call version of `call`. */
     return_call(funcidx: u32) { _() },
     /** [0x13] The tail-call version of `call_indirect`. */
